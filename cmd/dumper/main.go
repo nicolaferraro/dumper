@@ -7,8 +7,12 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"strconv"
+	"strings"
 	"time"
 )
+
+const contentLengthHeader = "Content-Length: "
 
 func main() {
 
@@ -35,7 +39,6 @@ func main() {
 func handleConnection(c net.Conn) {
 	defer c.Close()
 
-	fmt.Println()
 	reader := bufio.NewReader(c)
 	barr, err := reader.ReadBytes('\n')
 	if err != nil {
@@ -45,17 +48,44 @@ func handleConnection(c net.Conn) {
 		return
 	}
 	line := string(barr)
+	length := 0
 	for len(line) > 2 || (line != "\n" && line != "\r\n") {
+		if strings.HasPrefix(line, contentLengthHeader) {
+			length, err = strconv.Atoi(
+				strings.Trim(
+					strings.TrimPrefix(line, contentLengthHeader), " \r\n\t",
+				),
+			)
+			if err != nil {
+				fmt.Printf("wrong content length format: %v", err)
+				length = 0
+			}
+		}
+
 		fmt.Print(line)
 		barr, err = reader.ReadBytes('\n')
 		if err != nil {
 			if err != io.EOF {
-				log.Printf("error while reading data: %v\n", err)
+				log.Printf("error while reading headers: %v\n", err)
 			}
 			return
 		}
 		line = string(barr)
 	}
+	fmt.Println()
+
+	for i := 0; i < length; i++ {
+		b, err := reader.ReadByte()
+		if err != nil {
+			if err != io.EOF {
+				log.Printf("error while reading payload: %v\n", err)
+			}
+			return
+		}
+		fmt.Print(string(b))
+	}
+	fmt.Println()
+	fmt.Println()
 
 	c.Write([]byte("HTTP/1.1 204 No Content\n"))
 	c.Write([]byte("Server: Dumper\n"))
